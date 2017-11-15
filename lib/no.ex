@@ -7,12 +7,20 @@ defmodule No do
     args
     |> parse_args()
     |> run()
+    |> wait()
   end
 
   def say(args) do
-    {argv, process_num} = args
-    IO.puts "#{argv} at #{process_num}"
+    {argv, process_num, sender, debug} = args
+    case debug do
+      true -> send sender, {:debug, "#{expletive(argv)} from process no.#{process_num}", self()}
+      _    -> send sender, {:ok, expletive(argv)}
+    end
+    say(args)
   end
+
+  defp expletive(_ = ''), do: 'n'
+  defp expletive(value), do: value
 
   defp parse_args(args) do
     {opts, argv, _} = OptionParser.parse(
@@ -25,19 +33,39 @@ defmodule No do
 
   defp options_list() do
     [
-      processes: :integer
+      processes: :integer,
+      debug: :boolean,
     ]
   end
 
   defp aliases_list() do
     [
-      p: :processes
+      p: :processes,
+      d: :debug,
     ]
   end
 
-  def run(args) do
+  defp run(args) do
     {argv, opts} = args
-    num = String.to_integer(opts[:processes])
-    say({argv, num})
+    num = case opts[:processes] do
+      nil -> 1
+      _  -> String.to_integer(opts[:processes])
+    end
+    (1..num)
+    |> Enum.each(
+      fn(n) ->
+        spawn_link(No, :say, [{argv, n, self(), opts[:debug]}])
+      end
+    )
+  end
+
+  defp wait(args) do
+    receive do
+      {:ok, message} ->
+        IO.puts message
+      {:debug, message, pid} ->
+        IO.inspect {message, pid}
+    end
+    wait(args)
   end
 end
