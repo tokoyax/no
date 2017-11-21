@@ -11,12 +11,31 @@ defmodule No do
   end
 
   def say(args) do
-    {argv, process_num, sender, debug} = args
-    case debug do
-      true -> send sender, {:debug, "#{expletive(argv)} from process no.#{process_num}", self()}
-      _    -> send sender, {:ok, expletive(argv)}
-    end
+    message = buffer(args)
+    IO.puts(message)
     say(args)
+  end
+
+  defp buffer(args) do
+    {argv, process_num, _, debug} = args
+
+    message = case debug do
+      true -> {:debug, "#{expletive(argv)} from process no.#{process_num}", self()}
+      _    -> expletive(argv)
+    end
+
+    {:ok, pid} = StringIO.open("")
+    buffer(pid, args, message)
+  end
+
+  defp buffer(str_io, args, message) do
+    IO.puts(str_io, message)
+    {_, output} = StringIO.contents(str_io)
+
+    cond do
+      IO.iodata_length(output) > 10240 -> StringIO.flush(str_io)
+      true -> buffer(str_io, args, message)
+    end
   end
 
   defp expletive(_ = ''), do: 'n'
@@ -47,25 +66,17 @@ defmodule No do
 
   defp run(args) do
     {argv, opts} = args
+
     num = case opts[:processes] do
       nil -> 1
       _  -> String.to_integer(opts[:processes])
     end
-    (1..num)
-    |> Enum.each(
-      fn(n) ->
-        spawn_link(No, :say, [{argv, n, self(), opts[:debug]}])
-      end
-    )
+
+    Enum.each((1..num), fn(n) ->
+      spawn_link(No, :say, [{argv, n, self(), opts[:debug]}]) end)
   end
 
   defp wait(args) do
-    receive do
-      {:ok, message} ->
-        IO.puts message
-      {:debug, message, pid} ->
-        IO.inspect {message, pid}
-    end
     wait(args)
   end
 end
